@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 if(process.argv.length<5) {
-  console.log(`USAGE: node ${argv[1]} <localPort> <remoteHost> <remotePort>`)
+  console.log(`USAGE: node ${process.argv[1]} <localPort> <remoteHost> <remotePort>`)
+  process.exit(1)
 }
 
 const localPort = process.argv[2]
@@ -18,7 +19,7 @@ function log(addr, ...args) {
   let now = Date.now()
   let delay = now - lastLog
   lastLog = now
-  console.log('['+moment().format("DD.MM.YYYY HH:mm:ss")+']', '[ after '+delay+'ms ]', `[${addr}]`, ...args)
+  console.log('\n['+moment().format("DD.MM.YYYY HH:mm:ss")+']', '[ after '+delay+'ms ]', `[${addr}]`, ...args)
 }
 
 var server = http.createServer(function (creq, cres) {
@@ -34,11 +35,27 @@ var server = http.createServer(function (creq, cres) {
     headers: creq.headers
   }
 
+  log(creq.connection.remoteAddress, 'request headers:\n', JSON.stringify(creq.headers, null, "  "))
+
   var proxy = http.request(options, function (res) {
     log(creq.connection.remoteAddress, 'response', creq.url, res.statusCode, res.statusMessage)
+    log(creq.connection.remoteAddress, 'response headers:\n', JSON.stringify(creq.headers, null, "  "))
+    cres.writeHead(res.statusCode, res.statusMessage, res.headers)
     res.pipe(cres, {
       end: true
     })
+  })
+
+  const maxCapture = 4096
+  let buffer = ""
+  creq.on('data', function(data){
+    if(buffer.length > maxCapture) return
+    buffer += data
+  })
+  creq.on('end', function() {
+    if(buffer.length > maxCapture) return
+    if(buffer.length == 0) return
+    log(creq.connection.remoteAddress, 'request payload:\n', buffer)
   })
 
   creq.pipe(proxy, {
